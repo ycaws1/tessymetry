@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tessymetry — Tesla telemetry</title>
+  <link rel="stylesheet" href="/static/dashboard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Tessymetry</h1>
+    <p class="sub">Teslemetry webhook data</p>
+  </header>
+
+  <main class="panel">
+    <div class="row">
+      <label for="vin">Vehicle</label>
+      <select id="vin"></select>
+      <label for="limit">Points</label>
+      <select id="limit">
+        <option value="100">100</option>
+        <option value="300" selected>300</option>
+        <option value="600">600</option>
+        <option value="1200">1200</option>
+      </select>
+      <button type="button" id="refresh">Refresh</button>
+    </div>
+
+    <div class="row metrics" id="latest"></div>
+
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="row">
+      <label for="metric">Metric</label>
+      <select id="metric"></select>
+    </div>
+  </main>
+
+  <script>
+    const vinEl = document.getElementById("vin");
+    const limitEl = document.getElementById("limit");
+    const metricEl = document.getElementById("metric");
+    const latestEl = document.getElementById("latest");
+    let chart;
+
+    const colors = [
+      "#38bdf8", "#a78bfa", "#34d399", "#fbbf24", "#fb7185", "#2dd4bf", "#f472b6"
+    ];
+
+    async function loadVins() {
+      const r = await fetch("/api/vehicles");
+      const j = await r.json();
+      vinEl.innerHTML = "";
+      (j.vins || []).forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v;
+        vinEl.appendChild(o);
+      });
+      if (!j.vins || j.vins.length === 0) {
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = "No vehicles yet — send a webhook";
+        vinEl.appendChild(o);
+      }
+    }
+
+    function buildChart(labels, data, label) {
+      const ctx = document.getElementById("chart");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data,
+            borderColor: colors[0],
+            backgroundColor: "rgba(56, 189, 248, 0.15)",
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { maxTicksLimit: 8 } },
+            y: { beginAtZero: false },
+          },
+          plugins: { legend: { display: true } },
+        },
+      });
+    }
+
+    async function loadLatest(vin) {
+      latestEl.innerHTML = "";
+      if (!vin) return;
+      try {
+        const r = await fetch("/api/latest/" + encodeURIComponent(vin));
+        if (!r.ok) return;
+        const j = await r.json();
+        const flat = j.flattened || {};
+        const keys = Object.keys(flat).sort().slice(0, 12);
+        keys.forEach((k) => {
+          const v = flat[k];
+          const div = document.createElement("div");
+          div.className = "metric";
+          div.innerHTML = "<span class=\"k\">" + k + "</span><span class=\"v\">" + (
+            typeof v === "object" ? JSON.stringify(v) : String(v)
+          ) + "</span>";
+          latestEl.appendChild(div);
+        });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    async function loadTelemetry() {
+      const vin = vinEl.value;
+      const limit = limitEl.value;
+      if (!vin) return;
+      await loadLatest(vin);
+      const r = await fetch("/api/telemetry/" + encodeURIComponent(vin) + "?limit=" + limit);
+      const j = await r.json();
+      const keys = j.series_keys || [];
+      metricEl.innerHTML = "";
+      keys.forEach((k) => {
+        const o = document.createElement("option");
+        o.value = k;
+        o.textContent = k;
+        metricEl.appendChild(o);
+      });
+      const preferred = ["VehicleSpeed", "Soc", "BatteryLevel", "Odometer"];
+      let pick = keys.find((k) => preferred.includes(k)) || keys[0];
+      if (pick) metricEl.value = pick;
+      drawSelected(j, pick || keys[0]);
+    }
+
+    function drawSelected(j, key) {
+      if (!key || !j.points) return;
+      const labels = j.points.map((p) => {
+        const t = p.t || "";
+        return t.length > 19 ? t.slice(11, 19) : t;
+      });
+      const data = j.points.map((p) => (p.values && p.values[key] != null ? p.values[key] : null));
+      buildChart(labels, data, key);
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadTelemetry);
+    vinEl.addEventListener("change", loadTelemetry);
+    limitEl.addEventListener("change", loadTelemetry);
+    metricEl.addEventListener("change", async () => {
+      const vin = vinEl.value;
+      const limit = limitEl.value;
+      if (!vin) return;
+      const r = await fetch("/api/telemetry/" + encodeURIComponent(vin) + "?limit=" + limit);
+      const j = await r.json();
+      drawSelected(j, metricEl.value);
+    });
+
+    loadVins().then(loadTelemetry);
+  </script>
+</body>
+</html>
