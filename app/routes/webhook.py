@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
+def _authorization_token(authorization: str | None) -> str | None:
+    """Teslemetry may send `Bearer <token>` or the raw secret as the header value."""
+    if not authorization:
+        return None
+    s = authorization.strip()
+    if s.lower().startswith("bearer "):
+        return s[7:].strip()
+    return s
+
+
 async def verify_webhook_auth(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
@@ -24,9 +34,12 @@ async def verify_webhook_auth(
     secret = get_settings().webhook_secret
     if not secret:
         return
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = authorization.removeprefix("Bearer ").strip()
+    token = _authorization_token(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing Authorization header (use Bearer <secret> or paste secret as the header value).",
+        )
     if token != secret:
         raise HTTPException(status_code=403, detail="Invalid webhook token")
 
@@ -57,6 +70,7 @@ async def receive_teslemetry(
         "payload": payload,
         "flattened": flattened,
     }
+    logger.info("Payload: %s", body)
 
     try:
         supabase = get_supabase()
