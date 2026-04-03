@@ -1,0 +1,38 @@
+# Render Blueprint: two Web Services — one port each (required for public HTTP).
+# Deploy: Dashboard → New → Blueprint → connect repo, or `render blueprint apply`.
+#
+# After deploy you get two URLs, e.g.:
+#   tessymetry-api.onrender.com     → FastAPI (webhook /docs /dashboard)
+#   tessymetry-streamlit.onrender.com → Streamlit
+#
+# Set secrets in the linked env group when prompted (SUPABASE_URL, SUPABASE_SECRET_KEY).
+
+services:
+  - type: web
+    name: tessymetry-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: tessymetry-supabase
+      - key: WEBHOOK_SECRET
+        sync: false
+
+  - type: web
+    name: tessymetry-streamlit
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    # Bind to Render's PORT and listen on all interfaces — required to be reachable publicly.
+    startCommand: streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
+    healthCheckPath: /
+    envVars:
+      - fromGroup: tessymetry-supabase
+
+envVarGroups:
+  - name: tessymetry-supabase
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false

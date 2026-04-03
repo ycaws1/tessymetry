@@ -1,17 +1,17 @@
-# #!/usr/bin/env bash
-# # Start FastAPI (uvicorn) and Streamlit together. Run from repo root: ./start.sh
-# set -euo pipefail
+#!/usr/bin/env bash
+# Local dev: FastAPI + Streamlit. On Render use two Web Services — see render.yaml
+set -euo pipefail
 
-# ROOT="$(cd "$(dirname "$0")" && pwd)"
-# cd "$ROOT"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
 
-# if [[ ! -d .venv ]]; then
-#   echo "Missing .venv — run: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt" >&2
-#   exit 1
-# fi
+if [[ ! -d .venv ]]; then
+  echo "Missing .venv — run: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt" >&2
+  exit 1
+fi
 
-# # shellcheck source=/dev/null
-# source .venv/bin/activate
+# shellcheck source=/dev/null
+source .venv/bin/activate
 
 UVICORN_PORT="${UVICORN_PORT:-8000}"
 STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
@@ -27,7 +27,7 @@ uvicorn app.main:app --host 0.0.0.0 --port "${UVICORN_PORT}" &
 UV_PID=$!
 
 echo "Starting Streamlit on http://0.0.0.0:${STREAMLIT_PORT}"
-streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port "${STREAMLIT_PORT}" &
+streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port "${STREAMLIT_PORT}" --server.headless true --browser.gatherUsageStats false &
 ST_PID=$!
 
 wait
