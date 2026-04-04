@@ -37,6 +37,17 @@
       <label for="metric">Metric</label>
       <select id="metric"></select>
     </div>
+
+    <div class="table-section">
+      <h2 class="table-heading">Telemetry rows</h2>
+      <p class="table-hint">Newest first · same window as the chart</p>
+      <div class="table-wrap">
+        <table id="data-table">
+          <thead id="data-thead"></thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -44,6 +55,8 @@
     const limitEl = document.getElementById("limit");
     const metricEl = document.getElementById("metric");
     const latestEl = document.getElementById("latest");
+    const dataThead = document.getElementById("data-thead");
+    const dataTbody = document.getElementById("data-tbody");
     let chart;
 
     const colors = [
@@ -147,7 +160,17 @@
     async function loadTelemetry() {
       const vin = vinEl.value;
       const limit = limitEl.value;
-      if (!vin) return;
+      if (!vin) {
+        dataThead.innerHTML = "";
+        dataTbody.innerHTML = "";
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.className = "table-empty";
+        td.textContent = "Select a vehicle";
+        tr.appendChild(td);
+        dataTbody.appendChild(tr);
+        return;
+      }
       await loadLatest(vin);
       const r = await fetch("/api/telemetry/" + encodeURIComponent(vin) + "?limit=" + limit);
       const j = await r.json();
@@ -163,6 +186,7 @@
       let pick = keys.find((k) => preferred.includes(k)) || keys[0];
       if (pick) metricEl.value = pick;
       drawSelected(j, pick || keys[0]);
+      renderDataTable(j);
     }
 
     function drawSelected(j, key) {
@@ -177,6 +201,53 @@
       buildChart(labels, data, key);
     }
 
+    /** Tabular view: newest events first, all numeric series as columns */
+    function renderDataTable(j) {
+      dataThead.innerHTML = "";
+      dataTbody.innerHTML = "";
+      const keys = j.series_keys || [];
+      const points = j.points || [];
+      if (!keys.length || !points.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = Math.max(1, keys.length + 1);
+        td.className = "table-empty";
+        td.textContent = keys.length ? "No points in range" : "No numeric fields in this window";
+        tr.appendChild(td);
+        dataTbody.appendChild(tr);
+        return;
+      }
+      const headTr = document.createElement("tr");
+      const thTime = document.createElement("th");
+      thTime.className = "col-time";
+      thTime.textContent = "Time (GMT+8)";
+      headTr.appendChild(thTime);
+      keys.forEach((k) => {
+        const th = document.createElement("th");
+        th.textContent = k;
+        headTr.appendChild(th);
+      });
+      dataThead.appendChild(headTr);
+
+      const rows = points.slice().reverse();
+      rows.forEach((p) => {
+        const tr = document.createElement("tr");
+        const tdT = document.createElement("td");
+        tdT.className = "col-time";
+        const t = p.t || "";
+        tdT.textContent = formatGmt8Time(t) || t;
+        tr.appendChild(tdT);
+        const vals = p.values || {};
+        keys.forEach((k) => {
+          const td = document.createElement("td");
+          const v = vals[k];
+          td.textContent = v != null && v !== "" ? String(v) : "—";
+          tr.appendChild(td);
+        });
+        dataTbody.appendChild(tr);
+      });
+    }
+
     document.getElementById("refresh").addEventListener("click", loadTelemetry);
     vinEl.addEventListener("change", loadTelemetry);
     limitEl.addEventListener("change", loadTelemetry);
@@ -187,6 +258,7 @@
       const r = await fetch("/api/telemetry/" + encodeURIComponent(vin) + "?limit=" + limit);
       const j = await r.json();
       drawSelected(j, metricEl.value);
+      renderDataTable(j);
     });
 
     loadVins().then(loadTelemetry);
