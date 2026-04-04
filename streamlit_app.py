@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from app.telemetry_data import fetch_events_chronological, fetch_vins
+
+# Display timezone (GMT+8; no daylight saving)
+TZ_GMT8 = ZoneInfo("Asia/Singapore")
 
 # --- shared helpers (aligned with app/routes/api.py) ---
 
@@ -96,7 +100,7 @@ def numeric_columns(df: pd.DataFrame) -> list[str]:
 def main() -> None:
     st.set_page_config(page_title="Tessymetry", layout="wide")
     st.title("Tessymetry")
-    st.caption("Telemetry from Supabase (`telemetry_events`)")
+    st.caption("Telemetry from Supabase (`telemetry_events`). Times shown in GMT+8 (Asia/Singapore).")
 
     try:
         from app.config import get_settings
@@ -131,14 +135,27 @@ def main() -> None:
     df = events_to_dataframe(rows)
     df["event_created_at"] = pd.to_datetime(df["event_created_at"], utc=True, errors="coerce")
     df["received_at"] = pd.to_datetime(df["received_at"], utc=True, errors="coerce")
+    df["event_created_at_gmt8"] = df["event_created_at"].dt.tz_convert(TZ_GMT8)
+    df["received_at_gmt8"] = df["received_at"].dt.tz_convert(TZ_GMT8)
 
     latest = rows[-1]
+    last = df.iloc[-1]
     st.subheader("Latest event")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Events loaded", len(rows))
     c2.metric("Format", str(latest.get("format", "—")))
-    c3.metric("Event time (UTC)", str(latest.get("event_created_at", "—"))[:19])
-    c4.metric("Received (UTC)", str(latest.get("received_at", "—"))[:19])
+    ev_s = (
+        last["event_created_at_gmt8"].strftime("%Y-%m-%d %H:%M:%S")
+        if pd.notna(last["event_created_at_gmt8"])
+        else "—"
+    )
+    rc_s = (
+        last["received_at_gmt8"].strftime("%Y-%m-%d %H:%M:%S")
+        if pd.notna(last["received_at_gmt8"])
+        else "—"
+    )
+    c3.metric("Event time (GMT+8)", ev_s)
+    c4.metric("Received (GMT+8)", rc_s)
 
     with st.expander("Latest flattened fields (full JSON)", expanded=False):
         st.json(latest.get("flattened") or {})
@@ -161,7 +178,7 @@ def main() -> None:
                     y = df[col].map(_to_float)
                     fig.add_trace(
                         go.Scatter(
-                            x=df["event_created_at"],
+                            x=df["event_created_at_gmt8"],
                             y=y,
                             name=name,
                             mode="lines",
@@ -172,14 +189,22 @@ def main() -> None:
                     height=480,
                     margin=dict(l=40, r=20, t=40, b=40),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02),
-                    xaxis_title="event_created_at (UTC)",
+                    xaxis_title="Event time (GMT+8)",
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
     with tab_table:
-        display_df = df.drop(columns=["payload_json"], errors="ignore")
+        display_df = df.drop(
+            columns=["payload_json", "event_created_at", "received_at"],
+            errors="ignore",
+        ).rename(
+            columns={
+                "event_created_at_gmt8": "event_created_at (GMT+8)",
+                "received_at_gmt8": "received_at (GMT+8)",
+            }
+        )
         st.dataframe(display_df, use_container_width=True, height=520)
-        csv = df.to_csv(index=False).encode("utf-8")
+        csv = display_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download CSV (truncated payload column)",
             data=csv,
@@ -188,9 +213,18 @@ def main() -> None:
         )
 
     with tab_raw:
-        st.caption("Full `payload` JSON per event (expanders: newest first).")
+        st.caption("Full `payload` JSON per event (expanders: newest first). Titles use GMT+8.")
         for i, r in enumerate(reversed(rows)):
-            with st.expander(f"{r.get('event_created_at')} — {r.get('id')}", expanded=(i == 0)):
+            ts_raw = r.get("event_created_at")
+            try:
+                ts_g8 = (
+                    pd.to_datetime(ts_raw, utc=True).tz_convert(TZ_GMT8).strftime("%Y-%m-%d %H:%M:%S")
+                    if ts_raw
+                    else "—"
+                )
+            except (TypeError, ValueError):
+                ts_g8 = str(ts_raw) if ts_raw else "—"
+            with st.expander(f"{ts_g8} — {r.get('id')}", expanded=(i == 0)):
                 st.json(r.get("payload"))
 
 
