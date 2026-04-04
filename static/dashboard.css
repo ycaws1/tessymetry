@@ -58,6 +58,13 @@ label {
   font-size: 0.8rem;
 }
 
+.range-unit-row .range-unit-note {
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-basis: 100%;
+  margin-left: 0;
+}
+
 select,
 button {
   background: var(--bg);

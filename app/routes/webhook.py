@@ -70,7 +70,6 @@ async def receive_teslemetry(
         "payload": payload,
         "flattened": flattened,
     }
-    logger.info("Payload: %s", body)
 
     try:
         supabase = get_supabase()

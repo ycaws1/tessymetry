@@ -38,9 +38,18 @@
       <select id="metric"></select>
     </div>
 
+    <div class="row range-unit-row" id="range-unit-row" hidden>
+      <label for="range-unit">Range unit</label>
+      <select id="range-unit" title="EstBatteryRange and IdealBatteryRange are stored as miles">
+        <option value="km" selected>Kilometres</option>
+        <option value="mi">Miles</option>
+      </select>
+      <span class="range-unit-note">Telemetry is stored in miles; converted when km is selected</span>
+    </div>
+
     <div class="table-section">
       <h2 class="table-heading">Telemetry rows</h2>
-      <p class="table-hint">Newest first · same window as the chart</p>
+      <p class="table-hint">Newest first · same series as the chart (selected metric)</p>
       <div class="table-wrap">
         <table id="data-table">
           <thead id="data-thead"></thead>
@@ -57,7 +66,42 @@
     const latestEl = document.getElementById("latest");
     const dataThead = document.getElementById("data-thead");
     const dataTbody = document.getElementById("data-tbody");
+    const rangeUnitRow = document.getElementById("range-unit-row");
+    const rangeUnitEl = document.getElementById("range-unit");
     let chart;
+    /** Last /api/telemetry JSON for redraws (e.g. range unit) without refetch */
+    let telemetryPayload = null;
+    /** Last /api/latest JSON for latest panel */
+    let latestPayload = null;
+
+    const MI_TO_KM = 1.609344;
+    const RANGE_METRICS = new Set(["EstBatteryRange", "IdealBatteryRange"]);
+
+    function isRangeMetric(key) {
+      return key && RANGE_METRICS.has(key);
+    }
+
+    /** Stored values are miles (Tesla). */
+    function milesToDisplayUnit(miles, unit) {
+      const m = Number(miles);
+      if (Number.isNaN(m)) return miles;
+      return unit === "km" ? m * MI_TO_KM : m;
+    }
+
+    function formatRangeAmount(n) {
+      const num = Number(n);
+      if (Number.isNaN(num)) return String(n);
+      return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function rangeUnitSuffix(unit) {
+      return unit === "km" ? "km" : "mi";
+    }
+
+    try {
+      const saved = localStorage.getItem("tessymetry-range-unit");
+      if (saved === "km" || saved === "mi") rangeUnitEl.value = saved;
+    } catch (e) { /* ignore */ }
 
     const colors = [
       "#38bdf8", "#a78bfa", "#34d399", "#fbbf24", "#fb7185", "#2dd4bf", "#f472b6"
@@ -98,9 +142,12 @@
       }
     }
 
-    function buildChart(labels, data, label) {
+    function buildChart(labels, data, label, isoTimes, chartOpts) {
       const ctx = document.getElementById("chart");
       if (chart) chart.destroy();
+      const n = data.length;
+      const pointRadius = n > 500 ? 2 : n > 200 ? 3 : 4;
+      const yAxisUnit = chartOpts && chartOpts.yAxisUnit;
       chart = new Chart(ctx, {
         type: "line",
         data: {
@@ -112,46 +159,124 @@
             backgroundColor: "rgba(56, 189, 248, 0.15)",
             fill: true,
             tension: 0.2,
-            pointRadius: 0,
+            pointRadius,
+            pointHoverRadius: Math.max(pointRadius + 3, 6),
+            pointBackgroundColor: colors[0],
+            pointBorderColor: "#0c0f14",
+            pointBorderWidth: 1,
+            pointHoverBackgroundColor: "#e8edf5",
+            pointHoverBorderColor: colors[0],
+            pointHoverBorderWidth: 2,
           }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            mode: "nearest",
+            axis: "x",
+            intersect: false,
+          },
           scales: {
             x: { ticks: { maxTicksLimit: 8 } },
-            y: { beginAtZero: false },
+            y: {
+              beginAtZero: false,
+              ticks: yAxisUnit
+                ? {
+                    callback: (v) => (v == null ? "" : `${v} ${yAxisUnit}`),
+                  }
+                : {},
+            },
           },
-          plugins: { legend: { display: true } },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              backgroundColor: "rgba(20, 25, 34, 0.96)",
+              titleColor: "#e8edf5",
+              bodyColor: "#a8b4c4",
+              borderColor: "#243044",
+              borderWidth: 1,
+              padding: 12,
+              displayColors: false,
+              callbacks: {
+                title: (items) => {
+                  if (!items.length) return "";
+                  const i = items[0].dataIndex;
+                  const iso = isoTimes && isoTimes[i];
+                  if (iso) {
+                    const t = formatGmt8Time(iso);
+                    if (t) return t;
+                  }
+                  return labels[i] || "";
+                },
+                label: (item) => {
+                  const y = item.parsed.y;
+                  const u = chartOpts && chartOpts.tooltipUnit;
+                  const v =
+                    y != null && !Number.isNaN(y)
+                      ? Number(y).toLocaleString(undefined, { maximumFractionDigits: 6 })
+                      : String(y);
+                  const suffix = u ? ` ${u}` : "";
+                  return `${label}: ${v}${suffix}`;
+                },
+                footer: (items) => {
+                  if (!items.length || !isoTimes) return "";
+                  const iso = isoTimes[items[0].dataIndex];
+                  return iso ? `Event time: ${iso}` : "";
+                },
+              },
+            },
+          },
         },
+      });
+    }
+
+    function updateRangeUnitRow() {
+      rangeUnitRow.hidden = !isRangeMetric(metricEl.value);
+    }
+
+    function renderLatestPanel() {
+      latestEl.innerHTML = "";
+      if (!latestPayload) return;
+      const j = latestPayload;
+      const flat = j.flattened || {};
+      const unit = rangeUnitEl.value;
+      if (j.event_created_at) {
+        const div = document.createElement("div");
+        div.className = "metric";
+        div.innerHTML = "<span class=\"k\">event_created_at (GMT+8)</span><span class=\"v\">" +
+          formatGmt8Time(j.event_created_at) + "</span>";
+        latestEl.appendChild(div);
+      }
+      const keys = Object.keys(flat).sort().slice(0, 12);
+      keys.forEach((k) => {
+        const v = flat[k];
+        const div = document.createElement("div");
+        div.className = "metric";
+        const kLabel = isRangeMetric(k) ? k + " (" + rangeUnitSuffix(unit) + ")" : k;
+        let vText;
+        if (typeof v === "object") {
+          vText = JSON.stringify(v);
+        } else if (isRangeMetric(k)) {
+          const disp = milesToDisplayUnit(v, unit);
+          vText = formatRangeAmount(disp) + " " + rangeUnitSuffix(unit);
+        } else {
+          vText = String(v);
+        }
+        div.innerHTML = "<span class=\"k\">" + kLabel + "</span><span class=\"v\">" + vText + "</span>";
+        latestEl.appendChild(div);
       });
     }
 
     async function loadLatest(vin) {
       latestEl.innerHTML = "";
+      latestPayload = null;
       if (!vin) return;
       try {
         const r = await fetch("/api/latest/" + encodeURIComponent(vin));
         if (!r.ok) return;
-        const j = await r.json();
-        const flat = j.flattened || {};
-        if (j.event_created_at) {
-          const div = document.createElement("div");
-          div.className = "metric";
-          div.innerHTML = "<span class=\"k\">event_created_at (GMT+8)</span><span class=\"v\">" +
-            formatGmt8Time(j.event_created_at) + "</span>";
-          latestEl.appendChild(div);
-        }
-        const keys = Object.keys(flat).sort().slice(0, 12);
-        keys.forEach((k) => {
-          const v = flat[k];
-          const div = document.createElement("div");
-          div.className = "metric";
-          div.innerHTML = "<span class=\"k\">" + k + "</span><span class=\"v\">" + (
-            typeof v === "object" ? JSON.stringify(v) : String(v)
-          ) + "</span>";
-          latestEl.appendChild(div);
-        });
+        latestPayload = await r.json();
+        renderLatestPanel();
       } catch (e) {
         console.warn(e);
       }
@@ -161,6 +286,7 @@
       const vin = vinEl.value;
       const limit = limitEl.value;
       if (!vin) {
+        telemetryPayload = null;
         dataThead.innerHTML = "";
         dataTbody.innerHTML = "";
         const tr = document.createElement("tr");
@@ -185,34 +311,72 @@
       const preferred = ["VehicleSpeed", "Soc", "BatteryLevel", "Odometer"];
       let pick = keys.find((k) => preferred.includes(k)) || keys[0];
       if (pick) metricEl.value = pick;
+      telemetryPayload = j;
+      updateRangeUnitRow();
       drawSelected(j, pick || keys[0]);
       renderDataTable(j);
     }
 
+    function hasMetricValue(p, key) {
+      const v = p.values && p.values[key];
+      return v != null && v !== "";
+    }
+
     function drawSelected(j, key) {
       if (!key || !j.points) return;
-      const labels = j.points.map((p) => {
+      const pts = j.points.filter((p) => hasMetricValue(p, key));
+      const labels = pts.map((p) => {
         const t = p.t || "";
         const full = formatGmt8Time(t);
         if (full) return full;
         return t.length > 19 ? t.slice(11, 19) : t;
       });
-      const data = j.points.map((p) => (p.values && p.values[key] != null ? p.values[key] : null));
-      buildChart(labels, data, key);
+      const unit = rangeUnitEl.value;
+      const range = isRangeMetric(key);
+      const data = range
+        ? pts.map((p) => milesToDisplayUnit(p.values[key], unit))
+        : pts.map((p) => p.values[key]);
+      const isoTimes = pts.map((p) => p.t || "");
+      const chartLabel = range ? key + " (" + rangeUnitSuffix(unit) + ")" : key;
+      const u = range ? rangeUnitSuffix(unit) : null;
+      buildChart(
+        labels,
+        data,
+        chartLabel,
+        isoTimes,
+        range ? { yAxisUnit: u, tooltipUnit: u } : undefined
+      );
     }
 
-    /** Tabular view: newest events first, all numeric series as columns */
+    /** Tabular view of the selected metric only — matches the line chart series */
     function renderDataTable(j) {
       dataThead.innerHTML = "";
       dataTbody.innerHTML = "";
       const keys = j.series_keys || [];
       const points = j.points || [];
+      let metricKey = metricEl.value;
+      if (metricKey && !keys.includes(metricKey)) {
+        metricKey = keys[0] || "";
+      }
+      if (!metricKey && keys.length) {
+        metricKey = keys[0];
+      }
       if (!keys.length || !points.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = Math.max(1, keys.length + 1);
+        td.colSpan = 2;
         td.className = "table-empty";
         td.textContent = keys.length ? "No points in range" : "No numeric fields in this window";
+        tr.appendChild(td);
+        dataTbody.appendChild(tr);
+        return;
+      }
+      if (!metricKey) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.className = "table-empty";
+        td.textContent = "Select a metric";
         tr.appendChild(td);
         dataTbody.appendChild(tr);
         return;
@@ -222,14 +386,24 @@
       thTime.className = "col-time";
       thTime.textContent = "Time (GMT+8)";
       headTr.appendChild(thTime);
-      keys.forEach((k) => {
-        const th = document.createElement("th");
-        th.textContent = k;
-        headTr.appendChild(th);
-      });
+      const thVal = document.createElement("th");
+      const ru = rangeUnitEl.value;
+      thVal.textContent =
+        isRangeMetric(metricKey) ? metricKey + " (" + rangeUnitSuffix(ru) + ")" : metricKey;
+      headTr.appendChild(thVal);
       dataThead.appendChild(headTr);
 
-      const rows = points.slice().reverse();
+      const rows = points.slice().reverse().filter((p) => hasMetricValue(p, metricKey));
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.className = "table-empty";
+        td.textContent = "No samples for this metric in the selected window";
+        tr.appendChild(td);
+        dataTbody.appendChild(tr);
+        return;
+      }
       rows.forEach((p) => {
         const tr = document.createElement("tr");
         const tdT = document.createElement("td");
@@ -237,13 +411,16 @@
         const t = p.t || "";
         tdT.textContent = formatGmt8Time(t) || t;
         tr.appendChild(tdT);
-        const vals = p.values || {};
-        keys.forEach((k) => {
-          const td = document.createElement("td");
-          const v = vals[k];
-          td.textContent = v != null && v !== "" ? String(v) : "—";
-          tr.appendChild(td);
-        });
+        const td = document.createElement("td");
+        const raw = (p.values || {})[metricKey];
+        if (isRangeMetric(metricKey)) {
+          const disp = milesToDisplayUnit(raw, rangeUnitEl.value);
+          td.textContent =
+            formatRangeAmount(disp) + " " + rangeUnitSuffix(rangeUnitEl.value);
+        } else {
+          td.textContent = String(raw);
+        }
+        tr.appendChild(td);
         dataTbody.appendChild(tr);
       });
     }
@@ -251,12 +428,25 @@
     document.getElementById("refresh").addEventListener("click", loadTelemetry);
     vinEl.addEventListener("change", loadTelemetry);
     limitEl.addEventListener("change", loadTelemetry);
+    rangeUnitEl.addEventListener("change", () => {
+      try {
+        localStorage.setItem("tessymetry-range-unit", rangeUnitEl.value);
+      } catch (e) { /* ignore */ }
+      updateRangeUnitRow();
+      if (telemetryPayload) {
+        drawSelected(telemetryPayload, metricEl.value);
+        renderDataTable(telemetryPayload);
+      }
+      if (latestPayload) renderLatestPanel();
+    });
     metricEl.addEventListener("change", async () => {
       const vin = vinEl.value;
       const limit = limitEl.value;
       if (!vin) return;
       const r = await fetch("/api/telemetry/" + encodeURIComponent(vin) + "?limit=" + limit);
       const j = await r.json();
+      telemetryPayload = j;
+      updateRangeUnitRow();
       drawSelected(j, metricEl.value);
       renderDataTable(j);
     });

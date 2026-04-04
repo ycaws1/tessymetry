@@ -23,6 +23,7 @@ _PREFERRED_NUMERIC_KEYS = (
     "PackCurrent",
     "LifetimeEnergyUsed",
     "EstBatteryRange",
+    "IdealBatteryRange",
 )
 
 
