@@ -68,7 +68,7 @@
 
     <div class="last-event-section">
       <h2 class="table-heading">Last event received</h2>
-      <p class="table-hint">Newest stored event for this VIN — flattened fields below; raw webhook JSON under that</p>
+      <p class="table-hint">Newest stored event — metadata, flattened fields, and one row for the raw <code>payload</code> JSON</p>
       <div class="last-event-wrap">
         <table class="last-event-table" id="last-event-table">
           <thead>
@@ -79,11 +79,6 @@
           </thead>
           <tbody id="last-event-tbody"></tbody>
         </table>
-      </div>
-      <h5 class="payload-subheading">Stored webhook payload</h5>
-      <p class="table-hint">JSON body slice saved with the event (same as inserted into <code>telemetry_events.payload</code>)</p>
-      <div class="last-event-payload-wrap">
-        <pre id="last-event-payload" class="last-event-payload"></pre>
       </div>
     </div>
   </main>
@@ -153,25 +148,31 @@
       tbody.appendChild(tr);
     }
 
-    function renderLastEventPayloadPre(payload) {
-      const el = document.getElementById("last-event-payload");
-      if (!el) return;
+    function appendStoredPayloadRow(tbody, payload) {
+      const tr = document.createElement("tr");
+      tr.className = "last-event-payload-row";
+      const tdK = document.createElement("td");
+      tdK.className = "last-event-k";
+      tdK.textContent = "Stored webhook payload";
+      const tdV = document.createElement("td");
+      tdV.className = "last-event-v last-event-payload-cell";
       if (payload === undefined || payload === null) {
-        el.textContent = "—";
-        return;
+        tdV.textContent = "—";
+      } else if (typeof payload === "string") {
+        tdV.textContent = payload;
+      } else {
+        try {
+          tdV.textContent = JSON.stringify(payload, null, 2);
+        } catch (e) {
+          tdV.textContent = String(payload);
+        }
       }
-      if (typeof payload === "string") {
-        el.textContent = payload;
-        return;
-      }
-      try {
-        el.textContent = JSON.stringify(payload, null, 2);
-      } catch (e) {
-        el.textContent = String(payload);
-      }
+      tr.appendChild(tdK);
+      tr.appendChild(tdV);
+      tbody.appendChild(tr);
     }
 
-    /** Full latest event below the table (all metrics + server receive time + raw payload) */
+    /** Full latest event below the telemetry table (metadata, flattened fields, raw payload row) */
     function renderLastEventSection() {
       lastEventTbody.innerHTML = "";
       if (!latestPayload) {
@@ -182,7 +183,6 @@
         td.textContent = "No event loaded. Select a vehicle or refresh.";
         tr.appendChild(td);
         lastEventTbody.appendChild(tr);
-        renderLastEventPayloadPre(null);
         return;
       }
       const j = latestPayload;
@@ -205,7 +205,7 @@
         const kLabel = isRangeMetric(k) ? k + " (" + rangeUnitSuffix(rangeUnitEl.value) + ")" : k;
         appendLastEventRow(lastEventTbody, kLabel, formatFlattenedValueForDisplay(k, v));
       });
-      renderLastEventPayloadPre(j.payload);
+      appendStoredPayloadRow(lastEventTbody, j.payload);
     }
 
     try {

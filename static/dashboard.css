@@ -285,28 +285,20 @@ button:hover {
   white-space: normal;
 }
 
-.payload-subheading {
-  margin: 1rem 0 0.25rem;
-  font-size: 0.88rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.last-event-table tbody tr.last-event-payload-row td {
+  border-top: 1px solid var(--border);
+  padding-top: 0.55rem;
 }
 
-.last-event-payload-wrap {
-  max-height: min(320px, 45vh);
+.last-event-table .last-event-payload-cell {
+  max-height: min(280px, 40vh);
   overflow: auto;
-  margin-top: 0.35rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
-
-.last-event-payload {
-  margin: 0;
-  padding: 0.75rem 0.85rem;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   line-height: 1.45;
-  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  vertical-align: top;
 }
 
 /* —— Mobile & PWA —— */
@@ -351,8 +343,7 @@ button:hover {
   }
 
   .table-wrap,
-  .last-event-wrap,
-  .last-event-payload-wrap {
+  .last-event-wrap {
     max-height: min(380px, 48vh);
     -webkit-overflow-scrolling: touch;
   }
