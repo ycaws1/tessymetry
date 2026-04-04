@@ -125,7 +125,7 @@ async def latest_snapshot(vin: str) -> dict:
         supabase = get_supabase()
         res = (
             supabase.table("telemetry_events")
-            .select("event_created_at,flattened,format,received_at")
+            .select("event_created_at,flattened,format,received_at,payload")
             .eq("vin", vin)
             .order("event_created_at", desc=True)
             .limit(1)
@@ -145,4 +145,5 @@ async def latest_snapshot(vin: str) -> dict:
         "received_at": row.get("received_at"),
         "format": row.get("format"),
         "flattened": row.get("flattened") or {},
+        "payload": row.get("payload"),
     }

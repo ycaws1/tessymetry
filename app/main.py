@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -54,12 +54,9 @@ async def post_root() -> None:
     )
 
 
-@app.get("/", response_class=HTMLResponse)
-async def root() -> HTMLResponse:
-    return HTMLResponse(
-        '<p>Tessymetry API. Open <a href="/dashboard">/dashboard</a>.</p>',
-        status_code=200,
-    )
+@app.get("/")
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard", status_code=307)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

@@ -195,3 +195,90 @@ button:hover {
   text-align: center;
   white-space: normal;
 }
+
+.last-event-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.last-event-wrap {
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.last-event-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.last-event-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.last-event-table tbody td {
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid rgba(36, 48, 68, 0.6);
+  vertical-align: top;
+}
+
+.last-event-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.last-event-col-k {
+  width: 32%;
+}
+
+.last-event-k {
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.last-event-v {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.last-event-wrap .table-empty {
+  padding: 0.85rem 0.65rem;
+  color: var(--muted);
+  text-align: center;
+  white-space: normal;
+}
+
+.payload-subheading {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.last-event-payload-wrap {
+  max-height: min(320px, 45vh);
+  overflow: auto;
+  margin-top: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.last-event-payload {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--text);
+}

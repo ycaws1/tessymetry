@@ -57,6 +57,27 @@
         </table>
       </div>
     </div>
+
+    <div class="last-event-section">
+      <h2 class="table-heading">Last event received</h2>
+      <p class="table-hint">Newest stored event for this VIN — flattened fields below; raw webhook JSON under that</p>
+      <div class="last-event-wrap">
+        <table class="last-event-table" id="last-event-table">
+          <thead>
+            <tr>
+              <th class="last-event-col-k">Field</th>
+              <th class="last-event-col-v">Value</th>
+            </tr>
+          </thead>
+          <tbody id="last-event-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="payload-subheading">Stored webhook payload</h3>
+      <p class="table-hint">JSON body slice saved with the event (same as inserted into <code>telemetry_events.payload</code>)</p>
+      <div class="last-event-payload-wrap">
+        <pre id="last-event-payload" class="last-event-payload"></pre>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -68,6 +89,7 @@
     const dataTbody = document.getElementById("data-tbody");
     const rangeUnitRow = document.getElementById("range-unit-row");
     const rangeUnitEl = document.getElementById("range-unit");
+    const lastEventTbody = document.getElementById("last-event-tbody");
     let chart;
     /** Last /api/telemetry JSON for redraws (e.g. range unit) without refetch */
     let telemetryPayload = null;
@@ -96,6 +118,86 @@
 
     function rangeUnitSuffix(unit) {
       return unit === "km" ? "km" : "mi";
+    }
+
+    function formatFlattenedValueForDisplay(key, v) {
+      const unit = rangeUnitEl.value;
+      if (typeof v === "object" && v !== null) {
+        return JSON.stringify(v);
+      }
+      if (isRangeMetric(key)) {
+        const disp = milesToDisplayUnit(v, unit);
+        return formatRangeAmount(disp) + " " + rangeUnitSuffix(unit);
+      }
+      return String(v);
+    }
+
+    function appendLastEventRow(tbody, fieldLabel, valueText) {
+      const tr = document.createElement("tr");
+      const tdK = document.createElement("td");
+      tdK.className = "last-event-k";
+      tdK.textContent = fieldLabel;
+      const tdV = document.createElement("td");
+      tdV.className = "last-event-v";
+      tdV.textContent = valueText;
+      tr.appendChild(tdK);
+      tr.appendChild(tdV);
+      tbody.appendChild(tr);
+    }
+
+    function renderLastEventPayloadPre(payload) {
+      const el = document.getElementById("last-event-payload");
+      if (!el) return;
+      if (payload === undefined || payload === null) {
+        el.textContent = "—";
+        return;
+      }
+      if (typeof payload === "string") {
+        el.textContent = payload;
+        return;
+      }
+      try {
+        el.textContent = JSON.stringify(payload, null, 2);
+      } catch (e) {
+        el.textContent = String(payload);
+      }
+    }
+
+    /** Full latest event below the table (all metrics + server receive time + raw payload) */
+    function renderLastEventSection() {
+      lastEventTbody.innerHTML = "";
+      if (!latestPayload) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.className = "table-empty";
+        td.textContent = "No event loaded. Select a vehicle or refresh.";
+        tr.appendChild(td);
+        lastEventTbody.appendChild(tr);
+        renderLastEventPayloadPre(null);
+        return;
+      }
+      const j = latestPayload;
+      const flat = j.flattened || {};
+      appendLastEventRow(
+        lastEventTbody,
+        "Received at (GMT+8)",
+        j.received_at ? formatGmt8Time(j.received_at) : "—"
+      );
+      appendLastEventRow(
+        lastEventTbody,
+        "Event created at (GMT+8)",
+        j.event_created_at ? formatGmt8Time(j.event_created_at) : "—"
+      );
+      appendLastEventRow(lastEventTbody, "VIN", j.vin != null ? String(j.vin) : "—");
+      appendLastEventRow(lastEventTbody, "Format", j.format != null ? String(j.format) : "—");
+      const keys = Object.keys(flat).sort();
+      keys.forEach((k) => {
+        const v = flat[k];
+        const kLabel = isRangeMetric(k) ? k + " (" + rangeUnitSuffix(rangeUnitEl.value) + ")" : k;
+        appendLastEventRow(lastEventTbody, kLabel, formatFlattenedValueForDisplay(k, v));
+      });
+      renderLastEventPayloadPre(j.payload);
     }
 
     try {
@@ -237,7 +339,10 @@
 
     function renderLatestPanel() {
       latestEl.innerHTML = "";
-      if (!latestPayload) return;
+      if (!latestPayload) {
+        renderLastEventSection();
+        return;
+      }
       const j = latestPayload;
       const flat = j.flattened || {};
       const unit = rangeUnitEl.value;
@@ -266,19 +371,25 @@
         div.innerHTML = "<span class=\"k\">" + kLabel + "</span><span class=\"v\">" + vText + "</span>";
         latestEl.appendChild(div);
       });
+      renderLastEventSection();
     }
 
     async function loadLatest(vin) {
       latestEl.innerHTML = "";
       latestPayload = null;
+      renderLastEventSection();
       if (!vin) return;
       try {
         const r = await fetch("/api/latest/" + encodeURIComponent(vin));
-        if (!r.ok) return;
+        if (!r.ok) {
+          renderLastEventSection();
+          return;
+        }
         latestPayload = await r.json();
         renderLatestPanel();
       } catch (e) {
         console.warn(e);
+        renderLastEventSection();
       }
     }
 
@@ -287,6 +398,8 @@
       const limit = limitEl.value;
       if (!vin) {
         telemetryPayload = null;
+        latestPayload = null;
+        latestEl.innerHTML = "";
         dataThead.innerHTML = "";
         dataTbody.innerHTML = "";
         const tr = document.createElement("tr");
@@ -295,6 +408,7 @@
         td.textContent = "Select a vehicle";
         tr.appendChild(td);
         dataTbody.appendChild(tr);
+        renderLastEventSection();
         return;
       }
       await loadLatest(vin);
