@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0f14" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>Tessymetry — Tesla telemetry</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png" />
   <link rel="stylesheet" href="/static/dashboard.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -72,7 +80,7 @@
           <tbody id="last-event-tbody"></tbody>
         </table>
       </div>
-      <h3 class="payload-subheading">Stored webhook payload</h3>
+      <h5 class="payload-subheading">Stored webhook payload</h5>
       <p class="table-hint">JSON body slice saved with the event (same as inserted into <code>telemetry_events.payload</code>)</p>
       <div class="last-event-payload-wrap">
         <pre id="last-event-payload" class="last-event-payload"></pre>
@@ -566,6 +574,10 @@
     });
 
     loadVins().then(loadTelemetry);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    }
   </script>
 </body>
 </html>

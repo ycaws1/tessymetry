@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -38,6 +38,31 @@ app.include_router(api.router)
 static_dir = BASE / "static"
 if static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+_manifest_path = static_dir / "manifest.webmanifest"
+_sw_path = static_dir / "sw.js"
+
+
+@app.get("/manifest.webmanifest")
+async def web_app_manifest() -> FileResponse:
+    if not _manifest_path.is_file():
+        raise HTTPException(status_code=404, detail="manifest not found")
+    return FileResponse(
+        _manifest_path,
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/sw.js")
+async def service_worker() -> FileResponse:
+    if not _sw_path.is_file():
+        raise HTTPException(status_code=404, detail="service worker not found")
+    return FileResponse(
+        _sw_path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=0"},
+    )
 
 
 @app.get("/health")
