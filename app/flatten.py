@@ -1,4 +1,4 @@
-"""Normalize Teslemetry webhook formats to a flat dict for charts and filters."""
+"""Normalize Tesla / Teslemetry webhook bodies to a flat dict for charts and filters."""
 
 from __future__ import annotations
 
@@ -96,10 +96,10 @@ def detect_and_normalize(body: dict[str, Any]) -> tuple[str, str, datetime, dict
     data = body.get("data")
     if isinstance(data, dict):
         flat = json_safe(data)
-        return "teslemetry", vin, event_at, body, flat
+        return "tesla", vin, event_at, body, flat
 
     if isinstance(data, list):
         flat = json_safe(flatten_raw_array(data))
         return "raw", vin, event_at, body, flat
 
-    return "teslemetry", vin, event_at, body, {}
+    return "tesla", vin, event_at, body, {}

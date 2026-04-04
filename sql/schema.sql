@@ -8,7 +8,7 @@ create table if not exists public.telemetry_events (
   vin text not null,
   event_created_at timestamptz not null,
   received_at timestamptz not null default now(),
-  format text not null check (format in ('teslemetry', 'raw', 'splunk')),
+  format text not null check (format in ('tesla', 'teslemetry', 'raw', 'splunk')),
   payload jsonb not null,
   flattened jsonb not null default '{}'::jsonb
 );
